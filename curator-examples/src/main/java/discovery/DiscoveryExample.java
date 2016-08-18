@@ -18,8 +18,6 @@
  */
 package discovery;
 
-import com.google.common.base.Predicate;
-import com.google.common.collect.Iterables;
 import com.google.common.collect.Lists;
 import com.google.common.collect.Maps;
 import org.apache.curator.framework.CuratorFramework;
@@ -36,23 +34,17 @@ import org.apache.curator.x.discovery.strategies.RandomStrategy;
 import java.io.BufferedReader;
 import java.io.InputStreamReader;
 import java.net.InetAddress;
-import java.util.Arrays;
-import java.util.Collection;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 
 public class DiscoveryExample
 {
-    private static final String     PATH = "/services";
+    private  final String     PATH = "/services";
+    private  CuratorFramework client = null;
+    private  ServiceDiscovery<InstanceDetails> serviceDiscovery = null;
 
-    public static void main(String[] args) throws Exception
-    {
-        // This method is scaffolding to get the example up and running
-
-        CuratorFramework                                client = null;
-        ServiceDiscovery<InstanceDetails>               serviceDiscovery = null;
+    public DiscoveryExample() {
         Map<String, ServiceProvider<InstanceDetails>>   providers = Maps.newHashMap();
-        String[] a = {"xmpp", InetAddress.getLocalHost().getHostAddress()};
+
         try
         {
             client = CuratorFrameworkFactory.newClient("ce-sandbox-kafka-0001.nm.flipkart.com", 10000, 10000, new ExponentialBackoffRetry(1000, 3));
@@ -60,9 +52,11 @@ public class DiscoveryExample
 
             JsonInstanceSerializer<InstanceDetails> serializer = new JsonInstanceSerializer<InstanceDetails>(InstanceDetails.class);
             serviceDiscovery = ServiceDiscoveryBuilder.builder(InstanceDetails.class).client(client).basePath(PATH).serializer(serializer).build();
-            serviceDiscovery.start();
-            addInstance(a, client);
-            processCommands(serviceDiscovery, providers, client);
+            try {
+                serviceDiscovery.start();
+            } catch (Exception e) {
+                e.printStackTrace();
+            }
 
         }
         finally
@@ -74,115 +68,14 @@ public class DiscoveryExample
 
             CloseableUtils.closeQuietly(serviceDiscovery);
             CloseableUtils.closeQuietly(client);
-            deleteInstance(a, client);
         }
+
     }
 
-    private static void processCommands(ServiceDiscovery<InstanceDetails> serviceDiscovery, Map<String, ServiceProvider<InstanceDetails>> providers, CuratorFramework client) throws Exception
-    {
-        // More scaffolding that does a simple command line processor
-
-        printHelp();
-
-        List<ExampleServer>     servers = Lists.newArrayList();
-        try
-        {
-            BufferedReader          in = new BufferedReader(new InputStreamReader(System.in));
-            boolean                 done = false;
-            while ( !done )
-            {
-                System.out.print("> ");
-
-                String      line = in.readLine();
-                if ( line == null )
-                {
-                    break;
-                }
-
-                String      command = line.trim();
-                String[]    parts = command.split("\\s");
-                if ( parts.length == 0 )
-                {
-                    continue;
-                }
-                String      operation = parts[0];
-                String      args[] = Arrays.copyOfRange(parts, 1, parts.length);
-
-                if ( operation.equalsIgnoreCase("help") || operation.equalsIgnoreCase("?") )
-                {
-                    printHelp();
-                }
-                else if ( operation.equalsIgnoreCase("q") || operation.equalsIgnoreCase("quit") )
-                {
-                    done = true;
-                }
-                else if ( operation.equals("add") )
-                {
-                    addInstance(args, client);
-                }
-                else if ( operation.equals("delete") )
-                {
-                    deleteInstance(args, client);
-                }
-                else if ( operation.equals("random") )
-                {
-                    listRandomInstance(args, serviceDiscovery, providers, command);
-                }
-                else if ( operation.equals("list") )
-                {
-                    listInstances(serviceDiscovery);
-                }
-                else if (operation.equals("exit"))
-                {
-                    done = true;
-                }
-            }
-        }
-        finally
-        {
-            for ( ExampleServer server : servers )
-            {
-                CloseableUtils.closeQuietly(server);
-            }
-        }
-    }
-
-    private static void listRandomInstance(String[] args, ServiceDiscovery<InstanceDetails> serviceDiscovery, Map<String, ServiceProvider<InstanceDetails>> providers, String command) throws Exception
-    {
-        // this shows how to use a ServiceProvider
-        // in a real application you'd create the ServiceProvider early for the service(s) you're interested in
-
-        if ( args.length != 1 )
-        {
-            System.err.println("syntax error (expected random <name>): " + command);
-            return;
-        }
-
-        String                              serviceName = args[0];
-        ServiceProvider<InstanceDetails>    provider = providers.get(serviceName);
-        if ( provider == null )
-        {
-            provider = serviceDiscovery.serviceProviderBuilder().serviceName(serviceName).providerStrategy(new RandomStrategy<InstanceDetails>()).build();
-            providers.put(serviceName, provider);
-            provider.start();
-
-            Thread.sleep(2500); // give the provider time to warm up - in a real application you wouldn't need to do this
-        }
-
-        ServiceInstance<InstanceDetails>    instance = provider.getInstance();
-        if ( instance == null )
-        {
-            System.err.println("No instances named: " + serviceName);
-        }
-        else
-        {
-            outputInstance(instance);
-        }
-    }
-
-    private static void listInstances(ServiceDiscovery<InstanceDetails> serviceDiscovery) throws Exception
+    public Collection<String> listInstances() throws Exception
     {
         // This shows how to query all the instances in service discovery
+        List<String> result = new ArrayList<String>();
 
         try
         {
@@ -194,7 +87,7 @@ public class DiscoveryExample
                 System.out.println(serviceName);
                 for ( ServiceInstance<InstanceDetails> instance : instances )
                 {
-                    outputInstance(instance);
+                    result.add(instance.getId());
                 }
             }
         }
@@ -202,54 +95,31 @@ public class DiscoveryExample
         {
             CloseableUtils.closeQuietly(serviceDiscovery);
         }
+        return result;
     }
 
-    private static void outputInstance(ServiceInstance<InstanceDetails> instance)
+    public  void outputInstance(ServiceInstance<InstanceDetails> instance)
     {
         System.out.println("\t" + instance.getPayload().getDescription() + ": " + instance.buildUriSpec());
     }
 
-    private static void deleteInstance(String[] args, CuratorFramework client) throws Exception {
+    public  void deleteInstance(String serviceName, String description) throws Exception {
         // simulate a random instance going down
         // in a real application, this would occur due to normal operation, a crash, maintenance, etc.
-        final String    serviceName = args[0];
-        final String description = args[1];
-        ExampleServer   server = new ExampleServer(client, PATH, serviceName, description.toString());
+        ExampleServer   server = new ExampleServer(client, PATH, serviceName, description);
 
         CloseableUtils.closeQuietly(server);
-        System.out.println("Removed a random instance of: " + serviceName);
     }
 
-    private static void addInstance(String[] args, CuratorFramework client) throws Exception
+    public  void addInstance(String serviceName, String description) throws Exception
     {
         // simulate a new instance coming up
         // in a real application, this would be a separate process
 
-        StringBuilder   description = new StringBuilder();
-        for ( int i = 1; i < args.length; ++i )
-        {
-            if ( i > 1 )
-            {
-                description.append(' ');
-            }
-            description.append(args[i]);
-        }
-
-        String          serviceName = args[0];
-        ExampleServer   server = new ExampleServer(client, PATH, serviceName, description.toString());
+        ExampleServer   server = new ExampleServer(client, PATH, serviceName, description);
         server.start();
 
         System.out.println(serviceName + " added");
     }
 
-    private static void printHelp()
-    {
-        System.out.println("An example of using the ServiceDiscovery APIs. This example is driven by entering commands at the prompt:\n");
-        System.out.println("add <name> <description>: Adds a mock service with the given name and description");
-        System.out.println("delete <name>: Deletes one of the mock services with the given name");
-        System.out.println("list: Lists all the currently registered services");
-        System.out.println("random <name>: Lists a random instance of the service with the given name");
-        System.out.println("quit: Quit the example");
-        System.out.println();
-    }
 }
