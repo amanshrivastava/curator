@@ -22,19 +22,20 @@ import com.google.common.base.Predicate;
 import com.google.common.collect.Iterables;
 import com.google.common.collect.Lists;
 import com.google.common.collect.Maps;
-import org.apache.curator.utils.CloseableUtils;
 import org.apache.curator.framework.CuratorFramework;
 import org.apache.curator.framework.CuratorFrameworkFactory;
 import org.apache.curator.retry.ExponentialBackoffRetry;
-import org.apache.curator.test.TestingServer;
+import org.apache.curator.utils.CloseableUtils;
 import org.apache.curator.x.discovery.ServiceDiscovery;
 import org.apache.curator.x.discovery.ServiceDiscoveryBuilder;
 import org.apache.curator.x.discovery.ServiceInstance;
 import org.apache.curator.x.discovery.ServiceProvider;
 import org.apache.curator.x.discovery.details.JsonInstanceSerializer;
 import org.apache.curator.x.discovery.strategies.RandomStrategy;
+
 import java.io.BufferedReader;
 import java.io.InputStreamReader;
+import java.net.InetAddress;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.List;
@@ -42,26 +43,27 @@ import java.util.Map;
 
 public class DiscoveryExample
 {
-    private static final String     PATH = "/discovery/example";
+    private static final String     PATH = "/services";
 
     public static void main(String[] args) throws Exception
     {
         // This method is scaffolding to get the example up and running
 
-        TestingServer                                   server = new TestingServer();
         CuratorFramework                                client = null;
         ServiceDiscovery<InstanceDetails>               serviceDiscovery = null;
         Map<String, ServiceProvider<InstanceDetails>>   providers = Maps.newHashMap();
+        String[] a = {"xmpp", InetAddress.getLocalHost().getHostAddress()};
         try
         {
-            client = CuratorFrameworkFactory.newClient(server.getConnectString(), new ExponentialBackoffRetry(1000, 3));
+            client = CuratorFrameworkFactory.newClient("ce-sandbox-kafka-0001.nm.flipkart.com", 10000, 10000, new ExponentialBackoffRetry(1000, 3));
             client.start();
 
             JsonInstanceSerializer<InstanceDetails> serializer = new JsonInstanceSerializer<InstanceDetails>(InstanceDetails.class);
             serviceDiscovery = ServiceDiscoveryBuilder.builder(InstanceDetails.class).client(client).basePath(PATH).serializer(serializer).build();
             serviceDiscovery.start();
-
+            addInstance(a, client);
             processCommands(serviceDiscovery, providers, client);
+
         }
         finally
         {
@@ -72,7 +74,7 @@ public class DiscoveryExample
 
             CloseableUtils.closeQuietly(serviceDiscovery);
             CloseableUtils.closeQuietly(client);
-            CloseableUtils.closeQuietly(server);
+            deleteInstance(a, client);
         }
     }
 
@@ -116,11 +118,11 @@ public class DiscoveryExample
                 }
                 else if ( operation.equals("add") )
                 {
-                    addInstance(args, client, command, servers);
+                    addInstance(args, client);
                 }
                 else if ( operation.equals("delete") )
                 {
-                    deleteInstance(args, command, servers);
+                    deleteInstance(args, client);
                 }
                 else if ( operation.equals("random") )
                 {
@@ -129,6 +131,10 @@ public class DiscoveryExample
                 else if ( operation.equals("list") )
                 {
                     listInstances(serviceDiscovery);
+                }
+                else if (operation.equals("exit"))
+                {
+                    done = true;
                 }
             }
         }
@@ -203,52 +209,21 @@ public class DiscoveryExample
         System.out.println("\t" + instance.getPayload().getDescription() + ": " + instance.buildUriSpec());
     }
 
-    private static void deleteInstance(String[] args, String command, List<ExampleServer> servers)
-    {
+    private static void deleteInstance(String[] args, CuratorFramework client) throws Exception {
         // simulate a random instance going down
         // in a real application, this would occur due to normal operation, a crash, maintenance, etc.
-
-        if ( args.length != 1 )
-        {
-            System.err.println("syntax error (expected delete <name>): " + command);
-            return;
-        }
-
         final String    serviceName = args[0];
-        ExampleServer   server = Iterables.find
-        (
-            servers,
-            new Predicate<ExampleServer>()
-            {
-                @Override
-                public boolean apply(ExampleServer server)
-                {
-                    return server.getThisInstance().getName().endsWith(serviceName);
-                }
-            },
-            null
-        );
-        if ( server == null )
-        {
-            System.err.println("No servers found named: " + serviceName);
-            return;
-        }
+        final String description = args[1];
+        ExampleServer   server = new ExampleServer(client, PATH, serviceName, description.toString());
 
-        servers.remove(server);
         CloseableUtils.closeQuietly(server);
         System.out.println("Removed a random instance of: " + serviceName);
     }
 
-    private static void addInstance(String[] args, CuratorFramework client, String command, List<ExampleServer> servers) throws Exception
+    private static void addInstance(String[] args, CuratorFramework client) throws Exception
     {
         // simulate a new instance coming up
         // in a real application, this would be a separate process
-
-        if ( args.length < 2 )
-        {
-            System.err.println("syntax error (expected add <name> <description>): " + command);
-            return;
-        }
 
         StringBuilder   description = new StringBuilder();
         for ( int i = 1; i < args.length; ++i )
@@ -262,7 +237,6 @@ public class DiscoveryExample
 
         String          serviceName = args[0];
         ExampleServer   server = new ExampleServer(client, PATH, serviceName, description.toString());
-        servers.add(server);
         server.start();
 
         System.out.println(serviceName + " added");

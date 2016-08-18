@@ -41,16 +41,16 @@ public class ExampleServer implements Closeable
     public ExampleServer(CuratorFramework client, String path, String serviceName, String description) throws Exception
     {
         // in a real application, you'd have a convention of some kind for the URI layout
-        UriSpec     uriSpec = new UriSpec("{scheme}://foo.com:{port}");
+        UriSpec uriSpec = new UriSpec("ce-sandbox-kafka-0001.nm.flipkart.com");
 
         thisInstance = ServiceInstance.<InstanceDetails>builder()
             .name(serviceName)
+                .id(description)
             .payload(new InstanceDetails(description))
-            .port((int)(65535 * Math.random())) // in a real application, you'd use a common port
+            .port(2181)
             .uriSpec(uriSpec)
             .build();
 
-        // if you mark your payload class with @JsonRootName the provided JsonInstanceSerializer will work
         JsonInstanceSerializer<InstanceDetails> serializer = new JsonInstanceSerializer<InstanceDetails>(InstanceDetails.class);
 
         serviceDiscovery = ServiceDiscoveryBuilder.builder(InstanceDetails.class)
