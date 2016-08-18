@@ -18,53 +18,36 @@
  */
 package discovery;
 
-import com.google.common.collect.Lists;
 import com.google.common.collect.Maps;
 import org.apache.curator.framework.CuratorFramework;
-import org.apache.curator.framework.CuratorFrameworkFactory;
-import org.apache.curator.retry.ExponentialBackoffRetry;
 import org.apache.curator.utils.CloseableUtils;
 import org.apache.curator.x.discovery.ServiceDiscovery;
 import org.apache.curator.x.discovery.ServiceDiscoveryBuilder;
 import org.apache.curator.x.discovery.ServiceInstance;
 import org.apache.curator.x.discovery.ServiceProvider;
 import org.apache.curator.x.discovery.details.JsonInstanceSerializer;
-import org.apache.curator.x.discovery.strategies.RandomStrategy;
 
-import java.io.BufferedReader;
-import java.io.InputStreamReader;
-import java.net.InetAddress;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.List;
+import java.util.Map;
 
 public class DiscoveryExample
 {
     private  final String     PATH = "/services";
     private  ServiceDiscovery<InstanceDetails> serviceDiscovery = null;
+    Map<String, ServiceProvider<InstanceDetails>>   providers = Maps.newHashMap();
+    CuratorFramework client = null;
 
     public DiscoveryExample(CuratorFramework client) {
-        Map<String, ServiceProvider<InstanceDetails>>   providers = Maps.newHashMap();
 
-        try
-        {
-
-            JsonInstanceSerializer<InstanceDetails> serializer = new JsonInstanceSerializer<InstanceDetails>(InstanceDetails.class);
-            serviceDiscovery = ServiceDiscoveryBuilder.builder(InstanceDetails.class).client(client).basePath(PATH).serializer(serializer).build();
-            try {
-                serviceDiscovery.start();
-            } catch (Exception e) {
-                e.printStackTrace();
-            }
-
-        }
-        finally
-        {
-            for ( ServiceProvider<InstanceDetails> cache : providers.values() )
-            {
-                CloseableUtils.closeQuietly(cache);
-            }
-
-            CloseableUtils.closeQuietly(serviceDiscovery);
-            CloseableUtils.closeQuietly(client);
+        this.client = client;
+        JsonInstanceSerializer<InstanceDetails> serializer = new JsonInstanceSerializer<InstanceDetails>(InstanceDetails.class);
+        serviceDiscovery = ServiceDiscoveryBuilder.builder(InstanceDetails.class).client(client).basePath(PATH).serializer(serializer).build();
+        try {
+            serviceDiscovery.start();
+        } catch (Exception e) {
+            e.printStackTrace();
         }
 
     }
@@ -74,23 +57,16 @@ public class DiscoveryExample
         // This shows how to query all the instances in service discovery
         List<String> result = new ArrayList<String>();
 
-        try
+        Collection<String>  serviceNames = serviceDiscovery.queryForNames();
+        System.out.println(serviceNames.size() + " type(s)");
+        for ( String serviceName : serviceNames )
         {
-            Collection<String>  serviceNames = serviceDiscovery.queryForNames();
-            System.out.println(serviceNames.size() + " type(s)");
-            for ( String serviceName : serviceNames )
+            Collection<ServiceInstance<InstanceDetails>> instances = serviceDiscovery.queryForInstances(serviceName);
+            System.out.println(serviceName);
+            for ( ServiceInstance<InstanceDetails> instance : instances )
             {
-                Collection<ServiceInstance<InstanceDetails>> instances = serviceDiscovery.queryForInstances(serviceName);
-                System.out.println(serviceName);
-                for ( ServiceInstance<InstanceDetails> instance : instances )
-                {
-                    result.add(instance.getId());
-                }
+                result.add(instance.getId());
             }
-        }
-        finally
-        {
-            CloseableUtils.closeQuietly(serviceDiscovery);
         }
         return result;
     }
@@ -100,7 +76,19 @@ public class DiscoveryExample
         System.out.println("\t" + instance.getPayload().getDescription() + ": " + instance.buildUriSpec());
     }
 
-    public  void deleteInstance(CuratorFramework client, String serviceName, String description) throws Exception {
+    public void close() {
+        CloseableUtils.closeQuietly(serviceDiscovery);
+        for ( ServiceProvider<InstanceDetails> cache : providers.values() )
+        {
+            CloseableUtils.closeQuietly(cache);
+        }
+
+        CloseableUtils.closeQuietly(serviceDiscovery);
+        CloseableUtils.closeQuietly(client);
+
+    }
+
+    public  void deleteInstance(String serviceName, String description) throws Exception {
         // simulate a random instance going down
         // in a real application, this would occur due to normal operation, a crash, maintenance, etc.
         ExampleServer   server = new ExampleServer(client, PATH, serviceName, description);
@@ -108,7 +96,7 @@ public class DiscoveryExample
         CloseableUtils.closeQuietly(server);
     }
 
-    public  void addInstance(CuratorFramework client, String serviceName, String description) throws Exception
+    public  void addInstance(String serviceName, String description) throws Exception
     {
         // simulate a new instance coming up
         // in a real application, this would be a separate process

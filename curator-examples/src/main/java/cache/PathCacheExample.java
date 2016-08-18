@@ -46,35 +46,32 @@ import java.util.List;
  */
 public class PathCacheExample
 {
-    private static final String     PATH = "/services/xmpp";
-    private static DiscoveryExample discoveryExample = null;
+    private final String     PATH = "/services/xmpp";
+    private  DiscoveryExample discoveryExample = null;
     CuratorFramework    client = null;
     PathChildrenCache   cache = null;
 
     public PathCacheExample() throws Exception {
-        try
-        {
-            client = CuratorFrameworkFactory.newClient("ce-sandbox-kafka-0001.nm.flipkart.com", 10000, 10000, new ExponentialBackoffRetry(1000, 3));
-            client.start();
-            discoveryExample = new DiscoveryExample(client);
-            // in this example we will cache data. Notice that this is optional.
-            cache = new PathChildrenCache(client, PATH, true);
-            cache.start();
-            addListener();
-        }
-        finally
-        {
-            CloseableUtils.closeQuietly(cache);
-            CloseableUtils.closeQuietly(client);
-        }
+        client = CuratorFrameworkFactory.newClient("ce-sandbox-kafka-0001.nm.flipkart.com", 10000, 10000, new ExponentialBackoffRetry(1000, 3));
+        client.start();
+        discoveryExample = new DiscoveryExample(client);
+        cache = new PathChildrenCache(client, PATH, true);
+        cache.start();
+        addListener();
     }
 
     public void add() throws Exception {
-        discoveryExample.addInstance(client, "xmpp", InetAddress.getLocalHost().getHostAddress());
+        discoveryExample.addInstance("xmpp", InetAddress.getLocalHost().getHostAddress());
     }
 
     public void remove() throws Exception {
-        discoveryExample.deleteInstance(client, "xmpp", InetAddress.getLocalHost().getHostAddress());
+        discoveryExample.deleteInstance("xmpp", InetAddress.getLocalHost().getHostAddress());
+    }
+
+    public void close() {
+        discoveryExample.close();
+        CloseableUtils.closeQuietly(cache);
+        CloseableUtils.closeQuietly(client);
     }
 
 

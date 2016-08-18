@@ -18,5 +18,6 @@ public class MainClass {
             }
         }
         pathCacheExample.remove();
+        pathCacheExample.close();
     }
 }
