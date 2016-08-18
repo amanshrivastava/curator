@@ -47,16 +47,16 @@ import java.util.List;
 public class PathCacheExample
 {
     private static final String     PATH = "/services/xmpp";
-    private static DiscoveryExample discoveryExample = new DiscoveryExample();
+    private static DiscoveryExample discoveryExample = null;
     CuratorFramework    client = null;
     PathChildrenCache   cache = null;
 
     public PathCacheExample() throws Exception {
         try
         {
-            client = CuratorFrameworkFactory.newClient("ce-sandbox-kafka-0001.nm.flipkart.com", new ExponentialBackoffRetry(1000, 3));
+            client = CuratorFrameworkFactory.newClient("ce-sandbox-kafka-0001.nm.flipkart.com", 10000, 10000, new ExponentialBackoffRetry(1000, 3));
             client.start();
-
+            discoveryExample = new DiscoveryExample(client);
             // in this example we will cache data. Notice that this is optional.
             cache = new PathChildrenCache(client, PATH, true);
             cache.start();
@@ -70,11 +70,11 @@ public class PathCacheExample
     }
 
     public void add() throws Exception {
-        discoveryExample.addInstance("xmpp", InetAddress.getLocalHost().getHostAddress());
+        discoveryExample.addInstance(client, "xmpp", InetAddress.getLocalHost().getHostAddress());
     }
 
     public void remove() throws Exception {
-        discoveryExample.deleteInstance("xmpp", InetAddress.getLocalHost().getHostAddress());
+        discoveryExample.deleteInstance(client, "xmpp", InetAddress.getLocalHost().getHostAddress());
     }
 
 

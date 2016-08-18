@@ -39,16 +39,13 @@ import java.util.*;
 public class DiscoveryExample
 {
     private  final String     PATH = "/services";
-    private  CuratorFramework client = null;
     private  ServiceDiscovery<InstanceDetails> serviceDiscovery = null;
 
-    public DiscoveryExample() {
+    public DiscoveryExample(CuratorFramework client) {
         Map<String, ServiceProvider<InstanceDetails>>   providers = Maps.newHashMap();
 
         try
         {
-            client = CuratorFrameworkFactory.newClient("ce-sandbox-kafka-0001.nm.flipkart.com", 10000, 10000, new ExponentialBackoffRetry(1000, 3));
-            client.start();
 
             JsonInstanceSerializer<InstanceDetails> serializer = new JsonInstanceSerializer<InstanceDetails>(InstanceDetails.class);
             serviceDiscovery = ServiceDiscoveryBuilder.builder(InstanceDetails.class).client(client).basePath(PATH).serializer(serializer).build();
@@ -103,7 +100,7 @@ public class DiscoveryExample
         System.out.println("\t" + instance.getPayload().getDescription() + ": " + instance.buildUriSpec());
     }
 
-    public  void deleteInstance(String serviceName, String description) throws Exception {
+    public  void deleteInstance(CuratorFramework client, String serviceName, String description) throws Exception {
         // simulate a random instance going down
         // in a real application, this would occur due to normal operation, a crash, maintenance, etc.
         ExampleServer   server = new ExampleServer(client, PATH, serviceName, description);
@@ -111,7 +108,7 @@ public class DiscoveryExample
         CloseableUtils.closeQuietly(server);
     }
 
-    public  void addInstance(String serviceName, String description) throws Exception
+    public  void addInstance(CuratorFramework client, String serviceName, String description) throws Exception
     {
         // simulate a new instance coming up
         // in a real application, this would be a separate process
