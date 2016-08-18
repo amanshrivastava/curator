@@ -60,7 +60,7 @@ public class PathCacheExample
             // in this example we will cache data. Notice that this is optional.
             cache = new PathChildrenCache(client, PATH, true);
             cache.start();
-
+            addListener();
         }
         finally
         {
